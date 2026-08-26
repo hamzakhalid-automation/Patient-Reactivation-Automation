@@ -1,3 +1,30 @@
+# 🏥 Patient Reactivation & Rebooking Automation
+
+An AI-powered automation system built with **n8n** that helps physio therapy and med spa clinics reconnect with inactive patients and get them rebooked, without any manual staff effort.
+
+This project identifies patients who haven't booked a follow-up, sends personalized reminder messages, and automatically books responders into the clinic's calendar.
+
+---
+
+## 🔥 Features
+
+- Automated detection of inactive patients from clinic records
+- Personalized reminder messages (WhatsApp / SMS / Email)
+- Automatic rebooking into the calendar upon patient response
+- Non-responders flagged for manual staff follow-up
+- Custom dashboard to track conversations, patient status, and AI vs. human handoffs in real time
+
+---
+
+## 💼 Tech Stack
+
+- n8n (workflow automation)
+- OpenAI API (AI-powered conversation handling)
+- JavaScript (custom code nodes for data processing)
+- Webhook & REST API integrations
+- CRM / Calendar integration (GoHighLevel / Cliniko)
+
+
 
 ---
 
@@ -23,3 +50,6 @@
 ## 📄 Note
 
 This workflow was built for a real clinic client. Patient data shown in screenshots has been redacted for privacy.
+---
+
+## 🔗 Workflow Structure
