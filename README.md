@@ -24,8 +24,6 @@ This project identifies patients who haven't booked a follow-up, sends personali
 - Webhook & REST API integrations
 - CRM / Calendar integration (GoHighLevel / Cliniko)
 
-
-
 ---
 
 ## 🚀 Screenshots
@@ -44,12 +42,3 @@ This project identifies patients who haven't booked a follow-up, sends personali
 2. Inactive patients receive an automated, personalized message asking if they'd like to rebook.
 3. If the patient responds, the system checks calendar availability and books the appointment automatically.
 4. If there's no response, the patient is flagged in the dashboard for manual staff follow-up.
-
----
-
-## 📄 Note
-
-This workflow was built for a real clinic client. Patient data shown in screenshots has been redacted for privacy.
----
-
-## 🔗 Workflow Structure
