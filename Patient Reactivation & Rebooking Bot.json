@@ -1,0 +1,2762 @@
+{
+  "name": "Patient Reactivation & Rebooking Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -240,
+        80
+      ],
+      "id": "8fd51393-db54-4874-b6a3-635c26bd4408",
+      "name": "SW-01: Fetch Inactive Patients"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        208,
+        80
+      ],
+      "id": "7e59c7b2-55a3-4f3b-9da5-8eb954d04bbf",
+      "name": "SW-02: Loop Through Patients"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.phone }}\",\n  \"type\": \"template\",\n  \"template\": {\n    \"name\": \"hello_world\",\n    \"language\": {\n      \"code\": \"en_US\"\n    }\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        432,
+        0
+      ],
+      "id": "d6dafc4f-62db-4723-8f36-cd4444e33462",
+      "name": "SW-02: Send Outreach Message",
+      "alwaysOutputData": false,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO conversations (patient_id, channel, status, last_message_at)\nVALUES (\n  '{{ $('SW-02: Loop Through Patients').item.json.patient_id }}',\n  'whatsapp',\n  'active',\n  now()\n)\nRETURNING conversation_id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        656,
+        0
+      ],
+      "id": "8be2be0a-94c3-42ff-959d-7b243342a01f",
+      "name": "SW-02: Create Conversation",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-02: Create Conversation').item.json.conversation_id }}',\n  '{{ $('SW-02: Loop Through Patients').item.json.patient_id }}',\n  'outbound',\n  'bot',\n  'Hi! It has been a while since your last visit. Would you like to book a new appointment?'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        0
+      ],
+      "id": "b8a98222-402b-4fc2-b4bb-1a3c4cff3003",
+      "name": "SW-02: Log Outbound Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO events (patient_id, conversation_id, event_type, metadata)\nVALUES (\n  '{{ $('SW-02: Loop Through Patients').item.json.patient_id }}',\n  '{{ $('SW-02: Create Conversation').item.json.conversation_id }}',\n  'message_sent',\n  '{\"template\": \"hello_world\", \"phone\": \"{{ $('SW-02: Loop Through Patients').item.json.phone }}\"}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1104,
+        80
+      ],
+      "id": "4e97534b-0f1a-4746-a1bc-c37ef14682ae",
+      "name": "SW-02: Log Event",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT patient_id, name, phone, service_type, last_appointment_date\nFROM patients\nWHERE last_appointment_date < NOW() - INTERVAL '60 days'\nAND opted_out = false;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        80
+      ],
+      "id": "9851c465-8635-4d18-afe1-7082caa69eaf",
+      "name": "SW-01: Get Inactive Patients",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query[\"hub.challenge\"] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -16,
+        1088
+      ],
+      "id": "9c8461d2-ffb1-41b1-8e9a-3bd5cfbf87f0",
+      "name": "SW-03: Confirm Verification"
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "whatsapp-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        1184
+      ],
+      "id": "5790bb3d-b30b-4d1c-89b3-733353beef79",
+      "name": "SW-03: WhatsApp Webhook",
+      "webhookId": "a2453b33-690e-43e6-937c-fd3bbc3fef5f"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ad518f54-c6d6-42e8-9a37-d2a5bd7c432e",
+              "name": "phone",
+              "value": "={{ $json.body.entry[0].changes[0].value.messages[0].from }}",
+              "type": "string"
+            },
+            {
+              "id": "6756a37a-e708-4419-af78-144f5b99a491",
+              "name": "patient_name",
+              "value": "={{ $json.body.entry[0].changes[0].value.contacts[0].profile.name }}",
+              "type": "string"
+            },
+            {
+              "id": "df360a7d-62ec-40db-aaf1-b168dab171c1",
+              "name": "message_id",
+              "value": "={{ $json.body.entry[0].changes[0].value.messages[0].id }}",
+              "type": "string"
+            },
+            {
+              "id": "b1da44e9-0b78-46d2-afef-b39571b6a46d",
+              "name": "message_text",
+              "value": "={{ $json.body.entry[0].changes[0].value.messages[0].text.body }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -16,
+        1280
+      ],
+      "id": "1a827162-445a-4c19-81ef-93d7597bb5f7",
+      "name": "SW-03: Extract Message Data"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT patient_id, name, phone\nFROM patients\nWHERE REPLACE(phone, '+', '') = REPLACE('{{ $json.phone }}', '+', '');",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        1280
+      ],
+      "id": "d3a1e051-48bc-4900-b3df-93defdaf4581",
+      "name": "SW-03: Find Patient",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT conversation_id, status, pending_action, pending_data, ai_enabled\nFROM conversations\nWHERE patient_id = '{{ $('SW-03: Find Patient').item.json.patient_id }}'\nORDER BY started_at DESC\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        432,
+        1280
+      ],
+      "id": "c973a622-fc08-47dd-904f-607161148bd3",
+      "name": "SW-03: Find Active Conversation",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  'inbound',\n  'patient',\n  '{{ $('SW-03: Extract Message Data').item.json.message_text }}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        656,
+        1280
+      ],
+      "id": "a92247dc-d127-4529-81a7-ab2d8fabc5d1",
+      "name": "SW-03: Log Inbound Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Patient message: {{ $('SW-03: Extract Message Data').item.json.message_text }}",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are an intent classifier for a dental/medical clinic's patient reactivation chatbot. Your only job is to read a patient's WhatsApp reply and classify it into exactly one of these five intents:  - interested: patient wants to book an appointment or is asking about availability - not_interested: patient explicitly declines, says no, or doesn't want to book - question: patient is asking something specific (pricing, location, medical question, etc.) before deciding - human_request: patient wants to talk to a real person/staff, or the message is complex/unclear - stop: patient wants to stop receiving messages (e.g., \"stop\", \"unsubscribe\", \"don't message me\")  Respond ONLY with valid JSON in this exact format, nothing else: {\"intent\": \"one_of_the_five_above\", \"reason\": \"brief one-line explanation\"}"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        1328,
+        896
+      ],
+      "id": "f0bb74c0-50c4-4746-9db8-8754c086cbf9",
+      "name": "SW-03: Classify Intent"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        1408,
+        1120
+      ],
+      "id": "2d94ffe2-7d7c-487d-93fb-c146545fa4dc",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "dxvj7dtmIJg9IRBZ",
+          "name": "Groq account - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d73ffbe7-d02d-481b-8065-41a2f2d424e0",
+              "name": "intent",
+              "value": "={{ JSON.parse($json.text).intent }}",
+              "type": "string"
+            },
+            {
+              "id": "e7029b99-58bb-41ef-b07b-b1fb4468c9f6",
+              "name": "reason",
+              "value": "={{ JSON.parse($json.text).reason }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1680,
+        896
+      ],
+      "id": "bdef326c-fee7-403a-8638-b204d994f07d",
+      "name": "SW-03: Parse Intent"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "interested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "61000f95-d992-41ee-a75a-43a93f9f9627"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "interested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "651b607e-df01-459c-9c5d-dc028146e042",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "=not_interested",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "not_interested"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d182dae6-4d73-41d7-8003-bc6670262baf",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "question",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "question"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "de47fd78-4b9b-4854-aab0-45177ce84a0c",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "human_request",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "human_request"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "842d161c-0a6d-484b-9c6c-ed9e85f12f43",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "stop",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "stop"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1904,
+        848
+      ],
+      "id": "9279cd26-32ef-4ebd-9e5d-8fb11d8f879f",
+      "name": "SW-03: Route by Intent"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT sender, content, created_at\nFROM messages\nWHERE conversation_id = '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}'\nORDER BY created_at ASC\nLIMIT 20;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2128,
+        400
+      ],
+      "id": "6b0a5cd9-bc4c-4af6-b30f-a6f56787b213",
+      "name": "SW-03: Get Conversation History",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const messages = $input.all();\n\nlet transcript = messages.map(item => {\n  const sender = item.json.sender === 'bot' ? 'Assistant' : 'Patient';\n  return `${sender}: ${item.json.content}`;\n}).join('\\n');\n\nreturn [{ json: { transcript } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        400
+      ],
+      "id": "3bc91d80-3f70-46ca-af46-b2ca4bf2f4e8",
+      "name": "SW-03: Format History"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Conversation so far:\n{{ $('SW-03: Format History').item.json.transcript }}\n\nGenerate the next reply from the Assistant.",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a friendly, helpful assistant for a dental/medical clinic, chatting with a patient on WhatsApp who hasn't visited in a while. Your goal is to have a natural conversation, answer their questions, and gently guide them toward booking an appointment — without being pushy.  Keep replies short (2-3 sentences max, WhatsApp style). Be warm and professional. If they ask about services, pricing, or timing, answer helpfully based on general clinic knowledge. If they seem ready to book, encourage them to confirm a day/time. Do not make up specific prices or exact availability — keep it general and offer to check for them."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        2576,
+        304
+      ],
+      "id": "1f687f25-2a30-409d-9221-4ace4f256d46",
+      "name": "SW-03: Generate Reply"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        2656,
+        528
+      ],
+      "id": "f2995dc7-39f5-4221-96b9-1fd8ba6df286",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "dxvj7dtmIJg9IRBZ",
+          "name": "Groq account - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('SW-03: Extract Message Data').item.json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"{{ $json.text }}\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2928,
+        400
+      ],
+      "id": "eea5bd3f-3f6b-4a7e-adf7-af4059b5dd6c",
+      "name": "SW-03: Send Reply",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  'outbound',\n  'bot',\n  '{{ $('SW-03: Generate Reply').item.json.text }}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3152,
+        400
+      ],
+      "id": "10d8ef5e-403b-4beb-b058-cc02c97715b6",
+      "name": "SW-03: Log Bot Reply",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE patients\nSET opted_out = true, consent_status = 'opted_out'\nWHERE patient_id = '{{ $('SW-03: Find Patient').item.json.patient_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2128,
+        1280
+      ],
+      "id": "5080eca1-1c94-42ea-a599-9185d474c389",
+      "name": "SW-08: Update Opt-Out Status",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET status = 'opted_out'\nWHERE conversation_id = '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2352,
+        1280
+      ],
+      "id": "ba5c99d8-ee2a-41b7-bc25-6c39c30065a9",
+      "name": "SW-08: Close Conversation",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('SW-03: Extract Message Data').item.json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"You've been unsubscribed and won't receive further messages from us. If you change your mind, feel free to reach out anytime. Take care!\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2640,
+        1280
+      ],
+      "id": "9de2de34-b7af-4102-a329-f142ce1f6390",
+      "name": "SW-08: Send Opt-Out Confirmation",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  'outbound',\n  'bot',\n  'You''ve been unsubscribed and won''t receive further messages from us. If you change your mind, feel free to reach out anytime. Take care!'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2928,
+        1280
+      ],
+      "id": "6144245a-dbdd-4b31-85d8-f53fd7aff0e2",
+      "name": "SW-08: Log Confirmation Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO events (patient_id, conversation_id, event_type, metadata)\nVALUES (\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  'opted_out',\n  '{\"reason\": \"patient requested stop via WhatsApp\"}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3152,
+        1280
+      ],
+      "id": "472d019b-d2aa-452f-8c6a-8c115d52e8ae",
+      "name": "SW-08: Log Opt-Out Event",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO events (patient_id, conversation_id, event_type, metadata)\nVALUES (\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  'escalated',\n  '{\"reason\": \"{{ $('SW-03: Parse Intent').item.json.reason }}\"}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2128,
+        1088
+      ],
+      "id": "81babe97-20d7-4db1-849d-193e0f03bbdb",
+      "name": "SW-07: Log Escalation Event",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET status = 'escalated', ai_enabled = false\nWHERE conversation_id = '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2352,
+        1088
+      ],
+      "id": "15e6a315-8314-446e-ad7e-4092ecefe7d0",
+      "name": "SW-07: Update Conversation Status",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/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",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"🚨 *Escalation Alert*\\n\\n*Patient:* {{ $('SW-03: Find Patient').item.json.name }}\\n*Phone:* {{ $('SW-03: Extract Message Data').item.json.phone }}\\n*Message:* {{ $('SW-03: Extract Message Data').item.json.message_text }}\\n*Reason:* {{ $('SW-03: Parse Intent').item.json.reason }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2640,
+        1088
+      ],
+      "id": "6ed2ece7-4d79-4d92-87e6-24331726c0fc",
+      "name": "SW-07: Notify Staff (Slack)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('SW-03: Extract Message Data').item.json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Thanks for reaching out! Someone from our team will get back to you shortly to help with your query.\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2928,
+        1088
+      ],
+      "id": "fcae937a-9972-49e3-b58d-6f6532fb6c76",
+      "name": "SW-07: Send Acknowledgment",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO events (patient_id, conversation_id, event_type, metadata)\nVALUES (\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  'not_interested',\n  '{\"reason\": \"{{ $('SW-03: Parse Intent').item.json.reason }}\"}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2128,
+        896
+      ],
+      "id": "3f034828-27d2-4ffc-9acc-acc55cbc3595",
+      "name": "SW-05: Log Objection Event",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET status = 'closed'\nWHERE conversation_id = '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2352,
+        896
+      ],
+      "id": "f5f241ed-5830-4789-94a2-c721c66d0e84",
+      "name": "SW-05: Update Conversation Status",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('SW-03: Extract Message Data').item.json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"No worries at all! If you ever change your mind or need anything, we're just a message away. Take care!\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2640,
+        896
+      ],
+      "id": "911e8542-f214-4c72-9682-e43ecadab160",
+      "name": "SW-05: Send Closing Reply",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  'outbound',\n  'bot',\n  'No worries at all! If you ever change your mind or need anything, we''re just a message away. Take care!'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2928,
+        896
+      ],
+      "id": "441e61b9-acf2-4046-bf54-6919da55594d",
+      "name": "SW-05: Log Closing Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "hamza.realfunnel@gmail.com",
+          "mode": "list",
+          "cachedResultName": "hamza.realfunnel@gmail.com"
+        },
+        "timeMin": "={{ $now.toISO() }}",
+        "timeMax": "={{ $now.plus({ days: 7 }).toISO() }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        2128,
+        704
+      ],
+      "id": "b918ffd4-8641-4e2e-82ac-aaeb1733f969",
+      "name": "SW-04: Check Availability",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "NAZ8WFMorx3zZOk9",
+          "name": "Google Calendar - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const BUSINESS_START_HOUR = 10;\nconst BUSINESS_END_HOUR = 17;\nconst SLOT_DURATION_MINUTES = 60;\nconst DAYS_TO_CHECK = 7;\nconst TIMEZONE_OFFSET = '+05:00'; // Pakistan time (Asia/Karachi)\n\nconst busyEvents = $input.all()\n  .filter(item => item.json && item.json.start)\n  .map(item => ({\n    start: new Date(item.json.start.dateTime || item.json.start.date),\n    end: new Date(item.json.end.dateTime || item.json.end.date)\n  }));\n\nfunction isSlotFree(slotStart, slotEnd) {\n  return !busyEvents.some(event =>\n    (slotStart < event.end && slotEnd > event.start)\n  );\n}\n\nconst availableSlots = [];\nconst now = new Date();\n\nfor (let d = 1; d <= DAYS_TO_CHECK && availableSlots.length < 3; d++) {\n  const day = new Date(now.getTime() + d * 24 * 60 * 60 * 1000);\n  const year = day.getUTCFullYear();\n  const month = String(day.getUTCMonth() + 1).padStart(2, '0');\n  const dateNum = String(day.getUTCDate()).padStart(2, '0');\n\n  const dayOfWeek = new Date(`${year}-${month}-${dateNum}T12:00:00${TIMEZONE_OFFSET}`).getDay();\n  if (dayOfWeek === 0) continue; // Skip Sunday\n\n  for (let hour = BUSINESS_START_HOUR; hour < BUSINESS_END_HOUR && availableSlots.length < 3; hour++) {\n    const hourStr = String(hour).padStart(2, '0');\n    const slotStart = new Date(`${year}-${month}-${dateNum}T${hourStr}:00:00${TIMEZONE_OFFSET}`);\n    const slotEnd = new Date(slotStart.getTime() + SLOT_DURATION_MINUTES * 60 * 1000);\n\n    if (isSlotFree(slotStart, slotEnd)) {\n      availableSlots.push({\n        start: slotStart.toISOString(),\n        display: slotStart.toLocaleString('en-US', {\n          weekday: 'long', month: 'short', day: 'numeric',\n          hour: 'numeric', minute: '2-digit', hour12: true,\n          timeZone: 'Asia/Karachi'\n        })\n      });\n    }\n  }\n}\n\nreturn [{ json: { slots: availableSlots } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2352,
+        704
+      ],
+      "id": "7cd71c2c-ed41-4206-ad74-c5ad7cf7b5be",
+      "name": "SW-04: Calculate Free Slots"
+    },
+    {
+      "parameters": {
+        "jsCode": "const slots = $json.slots;\n\nlet message = \"Great! Here are some available slots:\\n\\n\";\nslots.forEach((slot, index) => {\n  message += `${index + 1}. ${slot.display}\\n`;\n});\nmessage += \"\\nReply with the number of your preferred slot (e.g., \\\"1\\\") and I'll book it for you!\";\n\nreturn [{ json: { message, slots } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        704
+      ],
+      "id": "d7a0e14f-c4a8-4238-bc55-a6ec1dfa60cc",
+      "name": "SW-04: Format Slots Message"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('SW-03: Extract Message Data').item.json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": {{ JSON.stringify($json.message) }}\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2928,
+        704
+      ],
+      "id": "64afc21e-24d9-4bd1-9bee-b24615d59cb0",
+      "name": "SW-04: Send Slots Message",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  'outbound',\n  'bot',\n  '{{ $('SW-04: Format Slots Message').item.json.message.replace(/'/g, \"''\") }}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3152,
+        704
+      ],
+      "id": "59f9d085-6884-4114-823a-ad888fe4c1f7",
+      "name": "SW-04: Log Slots Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET pending_action = 'awaiting_slot_selection',\n    pending_data = '{{ JSON.stringify($('SW-04: Calculate Free Slots').item.json.slots) }}'::jsonb\nWHERE conversation_id = '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3376,
+        704
+      ],
+      "id": "6f57bb81-f471-4440-ba7b-1d630c541b0b",
+      "name": "SW-04: Set Pending Action",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "517ddebb-2472-4440-8f9c-4002b3c72e43",
+              "leftValue": "={{ $('SW-03: Find Active Conversation').item.json.pending_action }}",
+              "rightValue": "awaiting_slot_selection",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1104,
+        1280
+      ],
+      "id": "bd89af02-f167-4d5a-a9fe-57a967a92ffa",
+      "name": "SW-03: Check Pending Action"
+    },
+    {
+      "parameters": {
+        "jsCode": "const messageText = $('SW-03: Extract Message Data').item.json.message_text.trim();\nconst selectedNumber = parseInt(messageText.match(/\\d+/)?.[0]);\n\nconst pendingData = $('SW-03: Find Active Conversation').item.json.pending_data;\nconst slots = typeof pendingData === 'string' ? JSON.parse(pendingData) : pendingData;\n\nif (!selectedNumber || selectedNumber < 1 || selectedNumber > slots.length) {\n  return [{ json: { valid: false } }];\n}\n\nconst selectedSlot = slots[selectedNumber - 1];\n\nreturn [{ json: { valid: true, selectedSlot: selectedSlot.start, selectedSlotDisplay: selectedSlot.display } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        1664
+      ],
+      "id": "2f08c70a-7243-4929-8648-acab6494ceb2",
+      "name": "SW-04: Parse Selected Slot"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "70b08812-0aa5-479c-9bd5-bcecba82c7ac",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1680,
+        1664
+      ],
+      "id": "b19e2f8e-187f-4018-b5ae-1e4d70a2b0ac",
+      "name": "SW-04: Is Valid Selection"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "hamza.realfunnel@gmail.com",
+          "mode": "list",
+          "cachedResultName": "hamza.realfunnel@gmail.com"
+        },
+        "start": "={{ $json.selectedSlot }}",
+        "end": "={{ new Date(new Date($json.selectedSlot).getTime() + 60*60*1000).toISOString() }}",
+        "additionalFields": {
+          "description": "=Patient phone: {{ $('SW-03: Extract Message Data').item.json.phone }}     Booked via WhatsApp reactivation bot",
+          "summary": "=Appointment: {{ $('SW-03: Find Patient').item.json.name }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1904,
+        1472
+      ],
+      "id": "44c36d3c-db61-4fc7-9c97-c1c3838ead46",
+      "name": "SW-04: Book Appointment",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "NAZ8WFMorx3zZOk9",
+          "name": "Google Calendar - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('SW-03: Extract Message Data').item.json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"You're all set! ✅ Your appointment is confirmed for {{ $('SW-04: Parse Selected Slot').item.json.selectedSlotDisplay }}. We look forward to seeing you! Reply STOP anytime to opt out of future messages.\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2128,
+        1472
+      ],
+      "id": "f210b40f-7a02-4e0e-99dd-726c82c956a1",
+      "name": "SW-04: Send Booking Confirmation",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  'outbound',\n  'bot',\n  'You''re all set! Your appointment is confirmed for {{ $('SW-04: Parse Selected Slot').item.json.selectedSlotDisplay }}.'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2352,
+        1472
+      ],
+      "id": "13ecbcbf-b133-4cda-9b23-7e7514b8a4b0",
+      "name": "SW-04: Log Confirmation Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO events (patient_id, conversation_id, event_type, metadata)\nVALUES (\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  'booked',\n  '{\"appointment_time\": \"{{ $('SW-04: Parse Selected Slot').item.json.selectedSlot }}\"}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2640,
+        1472
+      ],
+      "id": "49269896-e72f-43c0-a044-f67639aaa395",
+      "name": "SW-04: Log Booked Event",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET status = 'booked',\n    pending_action = NULL,\n    pending_data = NULL\nWHERE conversation_id = '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2928,
+        1472
+      ],
+      "id": "2edbea61-b622-4a10-acaa-09276b9f1303",
+      "name": "SW-04: Finalize Conversation",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $('SW-03: Extract Message Data').item.json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": \"Sorry, I didn't quite catch that. Please reply with just the number of your preferred slot (e.g., \\\"1\\\", \\\"2\\\", or \\\"3\\\").\"\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1904,
+        1664
+      ],
+      "id": "748404bf-c1f1-4a37-aecb-7a227a2417cf",
+      "name": "SW-04: Send Retry Message",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 11
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -240,
+        1888
+      ],
+      "id": "5c23fdd7-a61a-476d-a1b3-b0b600f8b5ce",
+      "name": "SW-06: Follow-Up Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT c.conversation_id, c.patient_id, c.follow_up_count, c.last_message_at, p.name, p.phone\nFROM conversations c\nJOIN patients p ON c.patient_id = p.patient_id\nWHERE c.status = 'active'\nAND p.opted_out = false\nAND c.follow_up_count < 3\nAND (\n  (c.follow_up_count = 0 AND c.last_message_at < NOW() - INTERVAL '3 days')\n  OR (c.follow_up_count = 1 AND c.last_message_at < NOW() - INTERVAL '7 days')\n  OR (c.follow_up_count = 2 AND c.last_message_at < NOW() - INTERVAL '14 days')\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        1888
+      ],
+      "id": "51137609-75c8-4575-a90c-2813a3ab7fc1",
+      "name": "SW-06: Find Stale Conversations",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        208,
+        1888
+      ],
+      "id": "30a6eb46-a8d3-494f-bb4f-be84dfbe236c",
+      "name": "SW-06: Loop Through Conversations"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.phone }}\",\n  \"type\": \"template\",\n  \"template\": {\n    \"name\": \"hello_world\",\n    \"language\": { \"code\": \"en_US\" }\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        432,
+        1888
+      ],
+      "id": "9e6dfbe1-1d89-45a8-b4a1-b6917b67bce3",
+      "name": "SW-06: Send Follow-Up",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-06: Loop Through Conversations').item.json.conversation_id }}',\n  '{{ $('SW-06: Loop Through Conversations').item.json.patient_id }}',\n  'outbound',\n  'bot',\n  'Follow-up reminder sent (template: hello_world)'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        656,
+        1888
+      ],
+      "id": "edcea6cb-7b53-4ba4-89de-132072fcc20b",
+      "name": "SW-06: Log Follow-Up Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET follow_up_count = follow_up_count + 1,\n    last_message_at = now()\nWHERE conversation_id = '{{ $('SW-06: Loop Through Conversations').item.json.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        880,
+        1888
+      ],
+      "id": "cb6a7f43-0a3a-497f-b8ef-af8626909e30",
+      "name": "SW-06: Update Follow-Up Count",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO events (patient_id, conversation_id, event_type, metadata)\nVALUES (\n  '{{ $('SW-06: Loop Through Conversations').item.json.patient_id }}',\n  '{{ $('SW-06: Loop Through Conversations').item.json.conversation_id }}',\n  'follow_up_sent',\n  '{\"attempt\": \"{{ $('SW-06: Find Stale Conversations').item.json.follow_up_count }}\"}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1104,
+        1888
+      ],
+      "id": "0aa768c7-d673-4e36-a6f1-971a8913d936",
+      "name": "SW-06: Log Follow-Up Event",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "📌 SW-01 / SW-02: Outreach\n\nRoz 9 AM ko chalta hai. 60+ din se inactive patients (jo opt-out nahi hain) Supabase se nikalta hai, har ek ko WhatsApp template message bhejta hai, naya conversation record banata hai, aur sab kuch (message + event) Supabase mein log karta hai.",
+        "height": 192,
+        "width": 432
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -48,
+        -304
+      ],
+      "typeVersion": 1,
+      "id": "fb21ee60-a9ed-45f1-8fcf-c9ea220e8309",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Patient jab bhi WhatsApp pe reply kare, ye chalta hai. Patient ko dhoondta hai, purani conversation link karta hai, LLM se reply ka intent samajhta hai, aur 5 tarah se handle karta hai:\n\nInterested → available slots offer karta hai → number select karne pe Google Calendar mein booking confirm karta hai\nNot Interested → politely close kar deta hai, reason log karta hai\nQuestion → natural conversation karta hai (LLM, purani history ke sath)\nHuman Request → Slack pe staff ko alert karta hai, patient ko bhi bata deta hai\nStop → turant opt-out kar deta hai, dobara kabhi message nahi jata",
+        "height": 240,
+        "width": 768
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -144,
+        784
+      ],
+      "typeVersion": 1,
+      "id": "07c39887-ee78-4eb3-9dcb-10bd616a7cfe",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "📌 SW-06: Follow-Up Sequencer\n\nRoz chalta hai (alag time pe). Un patients ko dhoondta hai jinhone outreach ke baad reply nahi diya — Day 3, Day 7, aur Day 14 pe dobara nudge bhejta hai (max 3 baar), phir rukk jata hai.",
+        "height": 176,
+        "width": 400
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -240,
+        1680
+      ],
+      "typeVersion": 1,
+      "id": "7b987a14-4226-4f52-861a-5159bb269efe",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "path": "dashboard-contacts",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        2112
+      ],
+      "id": "bacaf2ec-d7ad-4084-b110-b94038557fa5",
+      "name": "SW-10: Get Contacts Webhook",
+      "webhookId": "7abefcac-c119-4f09-b043-4cdaad4b4d69"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  c.conversation_id, \n  p.name, \n  p.phone, \n  c.status, \n  c.last_message_at,\n  c.ai_enabled,\n  (SELECT content FROM messages m WHERE m.conversation_id = c.conversation_id ORDER BY created_at DESC LIMIT 1) as last_message_preview\nFROM conversations c\nJOIN patients p ON c.patient_id = p.patient_id\nORDER BY c.last_message_at DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        2112
+      ],
+      "id": "51d9fd19-ea52-4c89-bfb9-67a7698a85e5",
+      "name": "SW-10: Fetch Contacts",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        208,
+        2112
+      ],
+      "id": "18831e1e-9b73-407a-90b3-119279110c34",
+      "name": "SW-10: Return Contacts"
+    },
+    {
+      "parameters": {
+        "path": "dashboard-messages",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        2336
+      ],
+      "id": "4d9b0913-f40c-4102-83cb-ada260a1b80d",
+      "name": "SW-11: Get Messages Webhook",
+      "webhookId": "6383c7a1-de69-40e0-bc3a-8749182281ad"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT message_id, direction, sender, content, created_at\nFROM messages\nWHERE conversation_id = '{{ $json.query.conversation_id }}'\nORDER BY created_at ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        2336
+      ],
+      "id": "c75279be-b8e7-466b-8322-29325afe9f64",
+      "name": "SW-11: Fetch Messages",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        208,
+        2336
+      ],
+      "id": "374a4f2f-952a-425b-847d-bfc0934ffbcd",
+      "name": "SW-11: Return Messages"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dashboard-reply",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        2560
+      ],
+      "id": "e19abdec-7e93-4fd5-89d0-dfdfdf8386cc",
+      "name": "SW-12: Staff Reply Webhook",
+      "webhookId": "a0fbbc79-4b02-40ad-85b4-6f9c1a753f27"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT p.patient_id, p.phone\nFROM conversations c\nJOIN patients p ON c.patient_id = p.patient_id\nWHERE c.conversation_id = '{{ $json.body.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        2560
+      ],
+      "id": "e6288e02-d893-4585-a19c-1e5975197cdd",
+      "name": "SW-12: Get Patient Phone",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v21.0/1175696322303511/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": \"{{ $json.phone }}\",\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": {{ JSON.stringify($('SW-12: Staff Reply Webhook').item.json.body.message) }}\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        2560
+      ],
+      "id": "3aaa6594-fbcd-4db8-8fad-3b47353a5f06",
+      "name": "SW-12: Send Staff Reply",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "oDbpEjlCgz1mpgll",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-12: Staff Reply Webhook').item.json.body.conversation_id }}',\n  '{{ $('SW-12: Get Patient Phone').item.json.patient_id }}',\n  'outbound',\n  'staff',\n  '{{ $('SW-12: Staff Reply Webhook').item.json.body.message.replace(/'/g, \"''\") }}'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        432,
+        2560
+      ],
+      "id": "81c79d7b-9bbc-404c-9727-90a6f410be82",
+      "name": "SW-12: Log Staff Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET status = 'staff_handling', last_message_at = now()\nWHERE conversation_id = '{{ $('SW-12: Staff Reply Webhook').item.json.body.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        656,
+        2560
+      ],
+      "id": "7dcccf27-4d43-4b3f-b8d1-f57b8dfc30cc",
+      "name": "SW-12: Update Status",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"success\": true}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        880,
+        2560
+      ],
+      "id": "d368977e-d568-485f-9d40-0bc7a3915c4e",
+      "name": "SW-12: Confirm Reply Sent"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dashboard-update-status",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        2784
+      ],
+      "id": "c3ae7115-80e4-4440-bdd0-2f754808aa25",
+      "name": "SW-13: Update Status Webhook",
+      "webhookId": "c9ad3a84-c283-4c20-9949-19296601ac63"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET status = '{{ $json.body.new_status }}'\nWHERE conversation_id = '{{ $json.body.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        2784
+      ],
+      "id": "683c31d2-ea1b-4f64-85d9-2e8f86c08ca9",
+      "name": "SW-13: Update Conversation Status",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"success\": true}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        208,
+        2784
+      ],
+      "id": "29ab6307-fdd3-486f-80ad-f257e3d5bd09",
+      "name": "SW-13: Confirm Status Updated"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dashboard-toggle-ai",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        3008
+      ],
+      "id": "16083089-0163-4eb5-9bdc-89154968d9c4",
+      "name": "SW-14: Toggle AI Webhook",
+      "webhookId": "9a729a28-83df-47bb-81c7-4ef81187796a"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversations\nSET ai_enabled = {{ $json.body.ai_enabled }}\nWHERE conversation_id = '{{ $json.body.conversation_id }}';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        3008
+      ],
+      "id": "819d7bf3-ca91-449d-889d-6ba1e971410d",
+      "name": "SW-14: Update AI Status",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"success\": true}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        208,
+        3008
+      ],
+      "id": "21d24655-31a1-49bf-8805-c73589b215b3",
+      "name": "SW-14: Confirm Toggle"
+    },
+    {
+      "parameters": {
+        "path": "dashboard-patients",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        3232
+      ],
+      "id": "8422b956-f13a-449b-9a5e-9515eced1f73",
+      "name": "SW-15: Get Patients Webhook",
+      "webhookId": "9cc28dd8-216b-4da8-8c61-506cb8e8634d"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \n  p.patient_id,\n  p.name,\n  p.phone,\n  p.service_type,\n  p.last_appointment_date,\n  p.opted_out,\n  c.status as conversation_status,\n  c.follow_up_count,\n  c.ai_enabled,\n  (SELECT COUNT(*) FROM events e WHERE e.patient_id = p.patient_id AND e.event_type = 'booked') as times_booked,\n  (SELECT COUNT(*) FROM events e WHERE e.patient_id = p.patient_id AND e.event_type = 'message_sent') as total_messages_sent,\n  (SELECT COUNT(*) FROM events e WHERE e.patient_id = p.patient_id AND e.event_type = 'follow_up_sent') as follow_ups_sent\nFROM patients p\nLEFT JOIN conversations c ON c.patient_id = p.patient_id\nORDER BY p.created_at DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        3232
+      ],
+      "id": "0adbd240-8068-4309-8cee-ead72cee63c8",
+      "name": "SW-15: Fetch Patient Data",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        208,
+        3232
+      ],
+      "id": "36e27740-a28c-4e9c-8b32-5ca1416ca269",
+      "name": "SW-15: Return Patients"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO messages (conversation_id, patient_id, direction, sender, content)\nVALUES (\n  '{{ $('SW-03: Find Active Conversation').item.json.conversation_id }}',\n  '{{ $('SW-03: Find Patient').item.json.patient_id }}',\n  'outbound',\n  'bot',\n  'Thanks for reaching out! Someone from our team will get back to you shortly to help with your query.'\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3152,
+        1088
+      ],
+      "id": "e246b8b0-8d5c-45a3-92f6-b031660f7cbe",
+      "name": "SW-07: Log Acknowledgment Message",
+      "credentials": {
+        "postgres": {
+          "id": "vvehSyHIrl57G33v",
+          "name": "Get Inactive Patients - Hamza"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6447cec8-2ee6-48cb-89e3-deabbfb3a1d8",
+              "leftValue": "={{ $('SW-03: Find Active Conversation').item.json.ai_enabled }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        880,
+        1280
+      ],
+      "id": "10a726c5-deda-44ab-a3ae-75304c28a050",
+      "name": "SW-03: Check AI Enabled"
+    },
+    {
+      "parameters": {
+        "content": "📌 SW-10: Get Contacts\n\nDashboard ke Conversations tab ke liye contact list load karta hai — saare patients + unka last message preview + status + AI on/off status, sab ek sath",
+        "width": 352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        2096
+      ],
+      "typeVersion": 1,
+      "id": "f73441d4-77a6-4680-ae71-7e624dc1993c",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "📌 SW-11: Get Messages\n\nKisi ek specific patient ki poori chat history laata hai jab staff us par click kare — sab messages chronological order mein.",
+        "width": 352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        2320
+      ],
+      "typeVersion": 1,
+      "id": "028459fa-e8b1-4378-acee-8186dbb4c776",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "content": "📌 SW-12: Staff Manual Reply\n\nStaff dashboard se khud koi message type kare to ye chalta hai — WhatsApp pe bhejta hai, Supabase mein sender = staff ke sath log karta hai, aur conversation ka status staff_handling kar deta hai.",
+        "height": 192,
+        "width": 352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        2544
+      ],
+      "typeVersion": 1,
+      "id": "61602198-c4d0-4ef8-8cb5-d51803ffa9f7",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "📌 SW-13: Update Conversation Status\n\nStaff manually kisi conversation ka status change kar sake (jaise \"closed\" mark karna) bina koi message bheje.",
+        "height": 128,
+        "width": 352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        2800
+      ],
+      "typeVersion": 1,
+      "id": "320f3c12-b603-4c23-b64a-51e597287080",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "content": "📌 SW-15: Get Patients (Database)\n\nDashboard ke Patient Database tab ke liye — har patient ka pura profile deta hai: naam, phone, last visit, follow-ups count, kitni baar booking hui, AI status, opted-out hai ya nahi.",
+        "height": 192,
+        "width": 352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        3200
+      ],
+      "typeVersion": 1,
+      "id": "b4c8dd13-1dc9-40a0-9342-d3beb779cbc7",
+      "name": "Sticky Note7"
+    },
+    {
+      "parameters": {
+        "content": "📌 SW-14: Toggle AI\n\nDashboard ke AI/Human toggle button ke liye — jab staff manually AI ko ON ya OFF karta hai, ye conversations.ai_enabled ko update kar deta hai.",
+        "height": 176,
+        "width": 352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -656,
+        2976
+      ],
+      "typeVersion": 1,
+      "id": "d78f4d81-bb2f-41be-962d-d01d0d8ccd51",
+      "name": "Sticky Note8"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "SW-01: Fetch Inactive Patients": {
+      "main": [
+        [
+          {
+            "node": "SW-01: Get Inactive Patients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-02: Loop Through Patients": {
+      "main": [
+        [],
+        [
+          {
+            "node": "SW-02: Send Outreach Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-02: Send Outreach Message": {
+      "main": [
+        [
+          {
+            "node": "SW-02: Create Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-02: Create Conversation": {
+      "main": [
+        [
+          {
+            "node": "SW-02: Log Outbound Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-02: Log Outbound Message": {
+      "main": [
+        [
+          {
+            "node": "SW-02: Log Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-02: Log Event": {
+      "main": [
+        [
+          {
+            "node": "SW-02: Loop Through Patients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-01: Get Inactive Patients": {
+      "main": [
+        [
+          {
+            "node": "SW-02: Loop Through Patients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Confirm Verification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SW-03: Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Find Patient",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Find Patient": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Find Active Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Find Active Conversation": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Log Inbound Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Log Inbound Message": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Check AI Enabled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "SW-03: Classify Intent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Classify Intent": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Parse Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Parse Intent": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Route by Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Route by Intent": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Check Availability",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SW-05: Log Objection Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SW-03: Get Conversation History",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SW-07: Log Escalation Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SW-08: Update Opt-Out Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Get Conversation History": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Format History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Format History": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Generate Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "SW-03: Generate Reply",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Generate Reply": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Send Reply": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Log Bot Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-08: Update Opt-Out Status": {
+      "main": [
+        [
+          {
+            "node": "SW-08: Close Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-08: Close Conversation": {
+      "main": [
+        [
+          {
+            "node": "SW-08: Send Opt-Out Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-08: Send Opt-Out Confirmation": {
+      "main": [
+        [
+          {
+            "node": "SW-08: Log Confirmation Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-08: Log Confirmation Message": {
+      "main": [
+        [
+          {
+            "node": "SW-08: Log Opt-Out Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-07: Log Escalation Event": {
+      "main": [
+        [
+          {
+            "node": "SW-07: Update Conversation Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-07: Update Conversation Status": {
+      "main": [
+        [
+          {
+            "node": "SW-07: Notify Staff (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-07: Notify Staff (Slack)": {
+      "main": [
+        [
+          {
+            "node": "SW-07: Send Acknowledgment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-05: Log Objection Event": {
+      "main": [
+        [
+          {
+            "node": "SW-05: Update Conversation Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-05: Update Conversation Status": {
+      "main": [
+        [
+          {
+            "node": "SW-05: Send Closing Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-05: Send Closing Reply": {
+      "main": [
+        [
+          {
+            "node": "SW-05: Log Closing Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Check Availability": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Calculate Free Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Calculate Free Slots": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Format Slots Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Format Slots Message": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Send Slots Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Send Slots Message": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Log Slots Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Log Slots Message": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Set Pending Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Set Pending Action": {
+      "main": [
+        []
+      ]
+    },
+    "SW-03: Check Pending Action": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Parse Selected Slot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SW-03: Classify Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Parse Selected Slot": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Is Valid Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Is Valid Selection": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Book Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SW-04: Send Retry Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Book Appointment": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Send Booking Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Send Booking Confirmation": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Log Confirmation Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Log Confirmation Message": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Log Booked Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-04: Log Booked Event": {
+      "main": [
+        [
+          {
+            "node": "SW-04: Finalize Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-06: Follow-Up Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "SW-06: Find Stale Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-06: Find Stale Conversations": {
+      "main": [
+        [
+          {
+            "node": "SW-06: Loop Through Conversations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-06: Loop Through Conversations": {
+      "main": [
+        [],
+        [
+          {
+            "node": "SW-06: Send Follow-Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-06: Send Follow-Up": {
+      "main": [
+        [
+          {
+            "node": "SW-06: Log Follow-Up Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-06: Log Follow-Up Message": {
+      "main": [
+        [
+          {
+            "node": "SW-06: Update Follow-Up Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-06: Update Follow-Up Count": {
+      "main": [
+        [
+          {
+            "node": "SW-06: Log Follow-Up Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-10: Get Contacts Webhook": {
+      "main": [
+        [
+          {
+            "node": "SW-10: Fetch Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-10: Fetch Contacts": {
+      "main": [
+        [
+          {
+            "node": "SW-10: Return Contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-11: Get Messages Webhook": {
+      "main": [
+        [
+          {
+            "node": "SW-11: Fetch Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-11: Fetch Messages": {
+      "main": [
+        [
+          {
+            "node": "SW-11: Return Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-12: Staff Reply Webhook": {
+      "main": [
+        [
+          {
+            "node": "SW-12: Get Patient Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-12: Get Patient Phone": {
+      "main": [
+        [
+          {
+            "node": "SW-12: Send Staff Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-12: Send Staff Reply": {
+      "main": [
+        [
+          {
+            "node": "SW-12: Log Staff Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-12: Log Staff Message": {
+      "main": [
+        [
+          {
+            "node": "SW-12: Update Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-12: Update Status": {
+      "main": [
+        [
+          {
+            "node": "SW-12: Confirm Reply Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-13: Update Status Webhook": {
+      "main": [
+        [
+          {
+            "node": "SW-13: Update Conversation Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-13: Update Conversation Status": {
+      "main": [
+        [
+          {
+            "node": "SW-13: Confirm Status Updated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-14: Toggle AI Webhook": {
+      "main": [
+        [
+          {
+            "node": "SW-14: Update AI Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-14: Update AI Status": {
+      "main": [
+        [
+          {
+            "node": "SW-14: Confirm Toggle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-15: Get Patients Webhook": {
+      "main": [
+        [
+          {
+            "node": "SW-15: Fetch Patient Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-15: Fetch Patient Data": {
+      "main": [
+        [
+          {
+            "node": "SW-15: Return Patients",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-07: Send Acknowledgment": {
+      "main": [
+        [
+          {
+            "node": "SW-07: Log Acknowledgment Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SW-03: Check AI Enabled": {
+      "main": [
+        [
+          {
+            "node": "SW-03: Check Pending Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "c3dc5d05-4361-406a-b555-21560c003744",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f31d08e6a0bfc014b8b51b6cf186b6a247dfbd284dd92a62a0943443c6bcb23c"
+  },
+  "nodeGroups": [],
+  "id": "yZJ4H4lGVRvGM0Zv",
+  "tags": []
+}
