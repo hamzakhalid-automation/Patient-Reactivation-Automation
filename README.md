@@ -29,12 +29,13 @@ This project identifies patients who haven't booked a follow-up, sends personali
 ## 🚀 Screenshots
 
 **n8n Workflow:**
-![Workflow](images/Workflow-Image.png)
+![Workflow](Workflow-Image.png)
 
 **Patient Dashboard:**
-![Dashboard Home](images/Dashboard-Home.png)
-![Dashboard CRM](images/Dashboard-CRM.png)
-![Dashboard Login](images/Dashboard-Login.png)
+![Dashboard Login](Dashboard-Login.png)
+![Dashboard Home](Dashboard-Home.png)
+![Dashboard CRM](Dashboard-CRM.png)
+
 ---
 
 ## ⚙️ How It Works
